@@ -1,152 +1,159 @@
 """
-Evidence Profiler Agent — FigureIt (v2 - God Level)
+Evidence Profiler Agent — FigureIt (v2.4 FINAL)
 
 ROLE:
-- Interprets raw data into 'Behavioral Flags'.
-- Detects specific user Archetypes (The Theorist, The Builder, The Ghost).
-- Uses tunable thresholds for stricter/looser judgment.
+- Convert raw GitHub & LeetCode data into ACTIONABLE, PROFESSIONAL signals.
+- Identify leverage points, inefficiencies, and readiness states.
+- Feed clean evidence into the Decision Engine (FOCUS / PARK / DROP).
 
-INPUT: Raw GitHub & LeetCode stats
-OUTPUT: EvidenceProfile attached to UserState
+PRINCIPLES:
+- No rankings
+- No ego labels
+- No "Top X%" language
+- Signals must directly imply next actions
 """
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from ai_engine.models.user_state import UserState, EvidenceProfile
 
+
 # =====================================================
-# TUNABLE THRESHOLDS (The "Bar")
+# THRESHOLDS (TUNABLE, EXPLICIT)
 # =====================================================
+
 THRESHOLDS = {
     # GitHub
     "MIN_REPOS": 3,
-    "TUTORIAL_HELL_REPOS": 10,
-    "IMPACT_STARS": 5,  # At least 5 strangers liked your code
-    "SENIOR_ACCOUNT_YEARS": 3,
+    "IMPACT_STARS": 5,                 # External validation exists
+    "PORTFOLIO_POLISH_STARS": 10,      # Strong quality signal
+    "STALE_ACCOUNT_YEARS": 2,          # Long inactivity
 
-    # LeetCode
-    "DSA_GHOST_LIMIT": 15,
-    "EASY_FARMER_RATIO": 0.7,  # >70% Easy = Red Flag
-    "INTERVIEW_READY_MEDIUMS": 30,
-    "COMPETITIVE_HARDS": 10
+    # DSA
+    "DSA_BEGINNER_LIMIT": 15,
+    "INTERVIEW_READY_MEDIUMS": 40,
+    "DSA_SATURATION_TOTAL": 200,       # Generic grinding loses ROI
+    "LOW_DIFFICULTY_RATIO": 0.7        # Too many Easy problems
 }
 
 
+# =====================================================
+# HELPERS
+# =====================================================
+
 def _calculate_account_age(created_at: str) -> float:
-    """Returns account age in years."""
-    if not created_at: return 0.0
+    if not created_at:
+        return 0.0
     try:
         start = datetime.strptime(created_at, "%Y-%m-%d")
-        now = datetime.now()
-        return (now - start).days / 365.0
-    except:
+        return (datetime.now() - start).days / 365.0
+    except Exception:
         return 0.0
 
 
+# =====================================================
+# MAIN AGENT
+# =====================================================
+
 def build_evidence(
-        user_state: UserState,
-        github_stats: Optional[Dict[str, Any]],
-        leetcode_stats: Optional[Dict[str, Any]]
+    user_state: UserState,
+    github_stats: Optional[Dict[str, Any]],
+    leetcode_stats: Optional[Dict[str, Any]]
 ) -> UserState:
     """
-    Builds EvidenceProfile with Archetype Detection.
+    Builds EvidenceProfile focused on readiness and leverage,
+    NOT on ranking or comparison.
     """
+
     flags: List[str] = []
 
-    # -------------------------
-    # 1. GITHUB DEEP DIVE
-    # -------------------------
+    # -------------------------------------------------
+    # 1. GITHUB ANALYSIS — IMPLEMENTATION SIGNAL
+    # -------------------------------------------------
+
     gh_valid = github_stats and github_stats.get("valid")
 
     if not gh_valid:
-        flags.append("no_github_evidence")
-        # Set defaults to safe 0 to prevent logic errors below
+        flags.append("no_project_evidence")
         repo_count = 0
         stars = 0
-        age = 0.0
+        account_age = 0.0
     else:
         repo_count = github_stats.get("repos", 0)
         stars = github_stats.get("stars", 0)
-        age = _calculate_account_age(github_stats.get("account_created", ""))
+        account_age = _calculate_account_age(
+            github_stats.get("account_created", "")
+        )
 
-        # --- Activity Flags ---
-        if repo_count == 0:
-            flags.append("github_ghost")
-        elif repo_count < THRESHOLDS["MIN_REPOS"]:
-            flags.append("low_output")  # Has account, but barely uses it
+        if repo_count < THRESHOLDS["MIN_REPOS"]:
+            flags.append("early_stage_projects")
 
-        # --- Quality Flags ---
-        # "Tutorial Hell": High quantity, Zero impact
-        if repo_count > THRESHOLDS["TUTORIAL_HELL_REPOS"] and stars == 0:
-            flags.append("tutorial_hell_confirmed")
-
-        # "Impact": People actually use their code
         if stars >= THRESHOLDS["IMPACT_STARS"]:
-            flags.append("proven_impact")
+            flags.append("projects_show_real_world_signal")
 
-        # "Stagnant": Old account, low repos (The "I made this in 1st year" student)
-        if age > THRESHOLDS["SENIOR_ACCOUNT_YEARS"] and repo_count < 5:
-            flags.append("stagnant_developer")
+        if stars < THRESHOLDS["PORTFOLIO_POLISH_STARS"] and repo_count >= 5:
+            flags.append("portfolio_needs_polish")
 
-    # -------------------------
-    # 2. LEETCODE DEEP DIVE
-    # -------------------------
+        if account_age > THRESHOLDS["STALE_ACCOUNT_YEARS"] and repo_count < 5:
+            flags.append("stagnant_project_growth")
+
+    # -------------------------------------------------
+    # 2. LEETCODE ANALYSIS — PROBLEM SOLVING SIGNAL
+    # -------------------------------------------------
+
     lc_valid = leetcode_stats and leetcode_stats.get("valid")
 
     if not lc_valid:
         flags.append("no_dsa_evidence")
-        total = 0
-        easy, medium, hard = 0, 0, 0
+        total = easy = medium = hard = 0
     else:
         total = leetcode_stats.get("total_solved", 0)
         easy = leetcode_stats.get("easy", 0)
         medium = leetcode_stats.get("medium", 0)
         hard = leetcode_stats.get("hard", 0)
 
-        # --- Effort Flags ---
-        if total < THRESHOLDS["DSA_GHOST_LIMIT"]:
-            flags.append("dsa_beginner")
+        if total < THRESHOLDS["DSA_BEGINNER_LIMIT"]:
+            flags.append("weak_dsa_foundation")
 
-        # --- Quality Flags ---
-        # "Easy Farmer": Solves 100 problems, 90 are Easy.
-        if total > 50:
-            easy_ratio = easy / total
-            if easy_ratio > THRESHOLDS["EASY_FARMER_RATIO"]:
-                flags.append("easy_farmer")
-
-        # "Interview Ready": Can handle Mediums (The sweet spot)
         if medium >= THRESHOLDS["INTERVIEW_READY_MEDIUMS"]:
-            flags.append("interview_ready_dsa")
+            flags.append("dsa_sufficient_for_interviews")
 
-        # "Competitive": Solves Hards
-        if hard >= THRESHOLDS["COMPETITIVE_HARDS"]:
-            flags.append("competitive_programmer")
+        if total >= THRESHOLDS["DSA_SATURATION_TOTAL"]:
+            flags.append("dsa_saturation_reached")
 
-    # -------------------------
-    # 3. ARCHETYPE DETECTION (The God Level)
-    # -------------------------
-    # Cross-referencing both platforms to find the "Persona"
+        if total > 50:
+            if (easy / total) > THRESHOLDS["LOW_DIFFICULTY_RATIO"]:
+                flags.append("low_difficulty_bias")
 
-    # "The Builder": Good GitHub, No DSA
-    if "proven_impact" in flags and ("dsa_beginner" in flags or "no_dsa_evidence" in flags):
-        flags.append("archetype_builder")
+    # -------------------------------------------------
+    # 3. CROSS-SIGNAL INSIGHTS — THE IMPORTANT PART
+    # -------------------------------------------------
 
-    # "The Theorist": Good DSA, No Projects
-    elif "interview_ready_dsa" in flags and ("github_ghost" in flags or "low_output" in flags):
-        flags.append("archetype_theorist")
+    # Strong DSA, weak projects → shift to building
+    if (
+        "dsa_saturation_reached" in flags
+        and "portfolio_needs_polish" in flags
+    ):
+        flags.append("shift_focus_to_projects")
 
-    # "The Balanced Engineer": Good at both (The Holy Grail)
-    elif "proven_impact" in flags and "interview_ready_dsa" in flags:
-        flags.append("archetype_top_1_percent")
+    # Strong projects, weak DSA → strengthen fundamentals
+    if (
+        "projects_show_real_world_signal" in flags
+        and "weak_dsa_foundation" in flags
+    ):
+        flags.append("strengthen_core_dsa")
 
-    # "The Invisible": Bad at both
-    elif ("github_ghost" in flags or "tutorial_hell_confirmed" in flags) and (
-            "dsa_beginner" in flags or "easy_farmer" in flags):
-        flags.append("archetype_invisible")
+    # Strong both → execution phase
+    if (
+        "projects_show_real_world_signal" in flags
+        and "dsa_sufficient_for_interviews" in flags
+    ):
+        flags.append("execution_ready_profile")
 
-    # -------------------------
+    # -------------------------------------------------
     # ATTACH & RETURN
-    # -------------------------
+    # -------------------------------------------------
+
     user_state.evidence_profile = EvidenceProfile(
         github_stats=github_stats if gh_valid else {},
         leetcode_stats=leetcode_stats if lc_valid else {},

@@ -4,6 +4,8 @@ from ai_engine.data_pipeline.scrapers import (
     get_leetcode_stats
 )
 from ai_engine.agents.evidence_profiler import build_evidence
+print("🔥 RUNNING EVIDENCE PROFILER v2.1 FROM:", __file__)
+
 
 
 def run_live_evidence_test():
