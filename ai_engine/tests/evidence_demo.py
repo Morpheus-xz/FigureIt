@@ -1,19 +1,42 @@
+"""
+FigureIt — Evidence Profiler Demo (v3.0)
+
+PURPOSE:
+- Live test Evidence Profiler using real GitHub & LeetCode data
+- Verify:
+  1. Human-readable evidence tags
+  2. ML-ready encoded feature vector
+
+NOTE:
+- This file is ONLY for development sanity checks
+- Will NOT exist in production
+"""
+
 from ai_engine.models.user_state import UserState, BasicProfile
+from ai_engine.agents.evidence_profiler import build_evidence
 from ai_engine.data_pipeline.scrapers import (
     get_github_stats,
     get_leetcode_stats
 )
-from ai_engine.agents.evidence_profiler import build_evidence
-print("🔥 RUNNING EVIDENCE PROFILER v2.1 FROM:", __file__)
+
+# =====================================================
+# DEMO CONFIG
+# =====================================================
+
+GITHUB_USERNAME = "Morpheus-xz"      # change if needed
+LEETCODE_USERNAME = "Morpheus-xz"    # change if needed
 
 
+# =====================================================
+# RUN DEMO
+# =====================================================
 
-def run_live_evidence_test():
-    print("\n=== FIGUREIT: LIVE EVIDENCE PROFILER TEST ===\n")
+def run_demo():
+    print("\n🔥 RUNNING FIGUREIT EVIDENCE PROFILER v3.0\n")
 
-    # 1️⃣ Create a dummy user (you)
+    # 1️⃣ Create Dummy UserState
     user = UserState(
-        user_id="vedansh_live",
+        user_id="demo_user_001",
         basic_profile=BasicProfile(
             college_tier=3,
             year_of_study=2,
@@ -21,34 +44,43 @@ def run_live_evidence_test():
         )
     )
 
-    # 2️⃣ Fetch REAL data
-    github_username = "Morpheus-xz"
-    leetcode_username = "Morpheus-xz"
-
-    print("Fetching GitHub data...")
-    github_stats = get_github_stats(github_username)
+    # 2️⃣ Fetch Raw Data
+    print("📥 Fetching GitHub data...")
+    github_stats = get_github_stats(GITHUB_USERNAME)
     print(github_stats)
 
-    print("\nFetching LeetCode data...")
-    leetcode_stats = get_leetcode_stats(leetcode_username)
+    print("\n📥 Fetching LeetCode data...")
+    leetcode_stats = get_leetcode_stats(LEETCODE_USERNAME)
     print(leetcode_stats)
 
-    # 3️⃣ Run Evidence Profiler
-    user = build_evidence(user, github_stats, leetcode_stats)
+    # 3️⃣ Build Evidence Profile
+    user = build_evidence(
+        user_state=user,
+        github_stats=github_stats,
+        leetcode_stats=leetcode_stats
+    )
 
-    # 4️⃣ Print results
-    print("\n=== EVIDENCE PROFILE RESULT ===")
-    print("Flags Detected:")
-    for flag in user.evidence_profile.flags:
+    evidence = user.evidence_profile
+
+    # 4️⃣ Display Results
+    print("\n=== 🧠 EVIDENCE PROFILE (HUMAN VIEW) ===")
+    for flag in evidence.flags:
         print(f" - {flag}")
 
-    print("\nRaw GitHub Stats:")
-    print(user.evidence_profile.github_stats)
+    print("\n=== 🤖 ENCODED FEATURES (ML VIEW) ===")
+    for feature, value in evidence.encoded_features.items():
+        print(f"{feature}: {value}")
 
-    print("\nRaw LeetCode Stats:")
-    print(user.evidence_profile.leetcode_stats)
+    print("\n=== 📊 RAW DATA SNAPSHOT ===")
+    print("GitHub:", evidence.github_stats)
+    print("LeetCode:", evidence.leetcode_stats)
 
+    print("\n✅ Evidence Profiler Demo Complete\n")
+
+
+# =====================================================
+# ENTRY POINT
+# =====================================================
 
 if __name__ == "__main__":
-    run_live_evidence_test()
-
+    run_demo()

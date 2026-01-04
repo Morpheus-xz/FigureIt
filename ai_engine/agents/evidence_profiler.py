@@ -1,16 +1,17 @@
 """
-Evidence Profiler Agent — FigureIt (v2.4 FINAL)
+Evidence Profiler Agent — FigureIt (v3.0 DATA-READY)
 
 ROLE:
-- Convert raw GitHub & LeetCode data into ACTIONABLE, PROFESSIONAL signals.
-- Identify leverage points, inefficiencies, and readiness states.
-- Feed clean evidence into the Decision Engine (FOCUS / PARK / DROP).
+- Convert raw GitHub & LeetCode data into:
+  1. Human-readable evidence tags (for UI & explanations)
+  2. Encoded numerical features (for ML & decision engines)
 
 PRINCIPLES:
 - No rankings
 - No ego labels
-- No "Top X%" language
-- Signals must directly imply next actions
+- No global comparison
+- Every signal must imply an ACTION
+- ML never reads strings, only numbers
 """
 
 from typing import Optional, Dict, Any, List
@@ -25,15 +26,41 @@ from ai_engine.models.user_state import UserState, EvidenceProfile
 THRESHOLDS = {
     # GitHub
     "MIN_REPOS": 3,
-    "IMPACT_STARS": 5,                 # External validation exists
-    "PORTFOLIO_POLISH_STARS": 10,      # Strong quality signal
-    "STALE_ACCOUNT_YEARS": 2,          # Long inactivity
+    "IMPACT_STARS": 5,
+    "PORTFOLIO_POLISH_STARS": 10,
+    "STALE_ACCOUNT_YEARS": 2,
 
     # DSA
     "DSA_BEGINNER_LIMIT": 15,
     "INTERVIEW_READY_MEDIUMS": 40,
-    "DSA_SATURATION_TOTAL": 200,       # Generic grinding loses ROI
-    "LOW_DIFFICULTY_RATIO": 0.7        # Too many Easy problems
+    "DSA_SATURATION_TOTAL": 200,
+    "LOW_DIFFICULTY_RATIO": 0.7
+}
+
+
+# =====================================================
+# TAG → FEATURE ENCODING (LOCKED v1)
+# =====================================================
+
+TAG_ENCODINGS = {
+    # Project signals
+    "no_project_evidence": "has_projects",
+    "early_stage_projects": "early_projects",
+    "projects_show_real_world_signal": "project_impact",
+    "portfolio_needs_polish": "portfolio_polish_needed",
+    "stagnant_project_growth": "project_stagnation",
+
+    # DSA signals
+    "no_dsa_evidence": "has_dsa",
+    "weak_dsa_foundation": "weak_dsa",
+    "dsa_sufficient_for_interviews": "dsa_interview_ready",
+    "dsa_saturation_reached": "dsa_saturated",
+    "low_difficulty_bias": "easy_bias",
+
+    # Cross signals
+    "shift_focus_to_projects": "needs_project_focus",
+    "strengthen_core_dsa": "needs_dsa_focus",
+    "execution_ready_profile": "execution_ready"
 }
 
 
@@ -51,6 +78,19 @@ def _calculate_account_age(created_at: str) -> float:
         return 0.0
 
 
+def _encode_flags(flags: List[str]) -> Dict[str, int]:
+    """
+    Converts human-readable tags into ML-safe numeric features.
+    Multi-hot encoding (0/1).
+    """
+    encoded = {}
+
+    for tag, feature_name in TAG_ENCODINGS.items():
+        encoded[feature_name] = int(tag in flags)
+
+    return encoded
+
+
 # =====================================================
 # MAIN AGENT
 # =====================================================
@@ -61,8 +101,9 @@ def build_evidence(
     leetcode_stats: Optional[Dict[str, Any]]
 ) -> UserState:
     """
-    Builds EvidenceProfile focused on readiness and leverage,
-    NOT on ranking or comparison.
+    Builds EvidenceProfile with:
+    - tags: explainable signals
+    - encoded_features: ML-ready numeric inputs
     """
 
     flags: List[str] = []
@@ -121,34 +162,36 @@ def build_evidence(
         if total >= THRESHOLDS["DSA_SATURATION_TOTAL"]:
             flags.append("dsa_saturation_reached")
 
-        if total > 50:
-            if (easy / total) > THRESHOLDS["LOW_DIFFICULTY_RATIO"]:
-                flags.append("low_difficulty_bias")
+        if total > 50 and (easy / total) > THRESHOLDS["LOW_DIFFICULTY_RATIO"]:
+            flags.append("low_difficulty_bias")
 
     # -------------------------------------------------
-    # 3. CROSS-SIGNAL INSIGHTS — THE IMPORTANT PART
+    # 3. CROSS-SIGNAL INSIGHTS — LEVERAGE LOGIC
     # -------------------------------------------------
 
-    # Strong DSA, weak projects → shift to building
     if (
         "dsa_saturation_reached" in flags
         and "portfolio_needs_polish" in flags
     ):
         flags.append("shift_focus_to_projects")
 
-    # Strong projects, weak DSA → strengthen fundamentals
     if (
         "projects_show_real_world_signal" in flags
         and "weak_dsa_foundation" in flags
     ):
         flags.append("strengthen_core_dsa")
 
-    # Strong both → execution phase
     if (
         "projects_show_real_world_signal" in flags
         and "dsa_sufficient_for_interviews" in flags
     ):
         flags.append("execution_ready_profile")
+
+    # -------------------------------------------------
+    # 4. ENCODE FOR ML
+    # -------------------------------------------------
+
+    encoded_features = _encode_flags(flags)
 
     # -------------------------------------------------
     # ATTACH & RETURN
@@ -157,7 +200,8 @@ def build_evidence(
     user_state.evidence_profile = EvidenceProfile(
         github_stats=github_stats if gh_valid else {},
         leetcode_stats=leetcode_stats if lc_valid else {},
-        flags=flags
+        flags=flags,
+        encoded_features=encoded_features
     )
 
     return user_state
