@@ -101,16 +101,21 @@ class ContextProfile:
 class EvidenceProfile:
     """
     Objective snapshot of user activity.
-    Recomputed whenever data is refreshed.
+
+    flags:
+      - Human-readable signals (UI / explanations)
+
+    encoded_features:
+      - ML-friendly numerical features (Decision Engine input)
     """
     github_stats: Dict[str, Any] = field(default_factory=dict)
     leetcode_stats: Dict[str, Any] = field(default_factory=dict)
 
-    # Derived flags (e.g. "tutorial_hell", "easy_padding")
     flags: List[str] = field(default_factory=list)
 
-    # Placeholder for Phase-2 RL (NOT used in v1)
-    feature_vector: List[float] = field(default_factory=list)
+    # 🔑 NEW: numeric features for ML / scoring
+    encoded_features: Dict[str, float] = field(default_factory=dict)
+
 
 
 @dataclass
