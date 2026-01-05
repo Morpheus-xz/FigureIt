@@ -1,16 +1,17 @@
 """
-Roadmap Generator — FigureIt (v2.1 PRODUCTION)
+Roadmap Generator — FigureIt (v2.2 FINAL + MARKET AWARE)
 
 ROLE:
 - Generates a personalized learning roadmap AFTER decisions are made
 - Prunes skills the user already has (Evidence)
 - Aligns projects with user interests
 - Respects time constraints (Context)
+- Adapts strategy based on market reality (NOT decisions)
 
 IMPORTANT:
 - This agent NEVER makes decisions
 - It ONLY compiles a roadmap for the chosen focus
-- Safe even if evidence is partially missing
+- Market input is advisory, not authoritative
 """
 
 import os
@@ -21,17 +22,17 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from ai_engine.models.user_state import UserState
+from ai_engine.market.market_pulse import MarketPulse
 
 # =====================================================
 # ENV SETUP
 # =====================================================
 
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # =====================================================
-# SYSTEM PROMPT (LLM AS CURRICULUM COMPILER)
+# SYSTEM PROMPT
 # =====================================================
 
 SYSTEM_PROMPT = """
@@ -45,6 +46,7 @@ INPUTS YOU RECEIVE:
 - Time per week
 - Evidence Flags (what the user already has / lacks)
 - Primary Interests
+- Market Context (trend & saturation)
 
 RULES:
 - OUTPUT STRICT JSON ONLY
@@ -61,9 +63,13 @@ ROADMAP RULES:
   - topics (specific, technical)
   - actionable_task (build something real)
 
+STRATEGY RULES:
 - Skip basics if evidence suggests competence
 - Projects must align with interests if provided
 - If time_per_week < 8 → micro-tasks only
+- If market saturation is high → prioritize differentiation projects
+- If market trend is rising → include modern tooling & best practices
+- If market trend is declining → focus on transferable fundamentals
 
 JSON SCHEMA:
 {
@@ -89,24 +95,21 @@ JSON SCHEMA:
 def generate_roadmap(user_state: UserState) -> Dict[str, Any]:
     """
     Generates a roadmap using FINAL user state.
-    JSON-safe, deterministic, production-ready.
+    Market-aware, JSON-safe, production-ready.
     """
 
     # -------------------------
     # 1. SAFETY CHECKS
     # -------------------------
 
-    if not user_state.decision_state:
-        return {"error": "Decision state missing. Run decision engine first."}
-
-    if not user_state.decision_state.focus:
-        return {"error": "No focus path selected."}
+    if not user_state.decision_state or not user_state.decision_state.focus:
+        return {"error": "Decision state missing or no focus selected."}
 
     focus_path = user_state.decision_state.focus[0]
     hours = user_state.basic_profile.time_availability
 
     # -------------------------
-    # 2. SAFE EXTRACTION
+    # 2. EVIDENCE & INTEREST EXTRACTION
     # -------------------------
 
     evidence_flags: List[str] = []
@@ -124,7 +127,29 @@ def generate_roadmap(user_state: UserState) -> Dict[str, Any]:
     primary_interests = [k for k, v in interest_bias.items() if v >= 0.5]
 
     # -------------------------
-    # 3. BUILD LLM PAYLOAD
+    # 3. MARKET CONTEXT (READ ONLY)
+    # -------------------------
+
+    market = MarketPulse(client=client)
+
+    # Map focus → representative skill
+    focus_skill_map = {
+        "Frontend Engineering": "React",
+        "Backend Engineering": "Python",
+        "Data Science / ML": "Python",
+        "Competitive Programming": "Algorithms"
+    }
+
+    skill = focus_skill_map.get(focus_path)
+    market_snapshot = market.snapshot()["skills"].get(skill, {})
+
+    market_context = {
+        "trend": market_snapshot.get("trend", "stable"),
+        "saturation": market_snapshot.get("saturation", "medium")
+    }
+
+    # -------------------------
+    # 4. BUILD LLM PAYLOAD
     # -------------------------
 
     payload = {
@@ -132,11 +157,12 @@ def generate_roadmap(user_state: UserState) -> Dict[str, Any]:
         "hours_per_week": hours,
         "github_top_language": github_top_language,
         "evidence_flags": evidence_flags,
-        "primary_interests": primary_interests
+        "primary_interests": primary_interests,
+        "market_context": market_context
     }
 
     # -------------------------
-    # 4. LLM CALL
+    # 5. LLM CALL
     # -------------------------
 
     try:
@@ -151,13 +177,14 @@ def generate_roadmap(user_state: UserState) -> Dict[str, Any]:
 
         raw = response.choices[0].message.content.strip()
 
-        # Manual JSON safety (guards against extra text)
+        # Strict JSON extraction
         start = raw.find("{")
         end = raw.rfind("}") + 1
         roadmap = json.loads(raw[start:end])
 
-        # ✅ JSON-safe metadata
+        # Metadata (JSON-safe)
         roadmap["generated_at"] = datetime.now().isoformat()
+        roadmap["market_context"] = market_context
 
         return roadmap
 
@@ -166,7 +193,7 @@ def generate_roadmap(user_state: UserState) -> Dict[str, Any]:
         return _fallback_roadmap(focus_path)
 
 # =====================================================
-# FALLBACK (NO LLM / FAILURE SAFE)
+# FALLBACK
 # =====================================================
 
 def _fallback_roadmap(focus_path: str) -> Dict[str, Any]:

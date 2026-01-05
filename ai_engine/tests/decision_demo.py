@@ -1,32 +1,40 @@
 """
-Decision Engine Demo — FigureIt
+Decision Advisor Demo — FigureIt
 
-Purpose:
-- Human-readable test for Decision Engine
-- Shows WHY a path was chosen
-- Same style as evidence_demo.py
+Tests the advisory layer on top of Decision Engine output
 """
 
-from ai_engine.models.user_state import (
-    UserState, BasicProfile,
-    ContextProfile, Strictness, Urgency, ProofExpectation,
-    EvidenceProfile, InterestProfile, Confidence
-)
-from ai_engine.agents.decision_engine import make_decision
+from dotenv import load_dotenv
+load_dotenv()
 
+from ai_engine.models.user_state import (
+    UserState,
+    BasicProfile,
+    ContextProfile,
+    EvidenceProfile,
+    InterestProfile,
+    DecisionState,
+    Strictness,
+    Urgency,
+    ProofExpectation,
+    Confidence
+)
+
+from ai_engine.agents.decision_advisor import advise_decision
 
 def run_demo():
-    print("\n🔥 RUNNING FIGUREIT DECISION ENGINE DEMO\n")
+    print("🔥 RUNNING DECISION ADVISOR DEMO\n")
 
-    # -----------------------------------------
-    # SIMULATED USER (Realistic Profile)
-    # -----------------------------------------
+    # -------------------------------
+    # MOCK USER STATE (Post-Decision)
+    # -------------------------------
     user = UserState(
-        user_id="demo_user",
+        user_id="advisor_demo",
         basic_profile=BasicProfile(
             college_tier=3,
-            year_of_study=2,
-            time_availability=8   # Limited time
+            year_of_study=3,
+            time_availability=6,
+            constraints=[]
         )
     )
 
@@ -37,64 +45,45 @@ def run_demo():
         proof_expectation=ProofExpectation.BASIC
     )
 
+    user.evidence_profile = EvidenceProfile(
+        github_stats={"repos": 12, "stars": 8},
+        leetcode_stats={"total_solved": 340, "medium": 180},
+        flags=[]
+    )
+
     user.interest_profile = InterestProfile(
         interest_bias={
-            "development": 0.6,
+            "development": 0.9,
             "problem_solving": 0.8,
-            "data": 0.2
+            "data": 0.4
         },
         confidence_level=Confidence.HIGH,
         exploration_allowed=False
     )
 
-    user.evidence_profile = EvidenceProfile(
-        github_stats={
-            "repos": 14,
-            "stars": 14,
-            "top_lang": "Python"
-        },
-        leetcode_stats={
-            "total_solved": 332,
-            "easy": 152,
-            "medium": 165,
-            "hard": 15
-        },
-        flags=[
-            "projects_show_real_world_signal",
-            "dsa_sufficient_for_interviews",
-            "dsa_saturation_reached",
-            "execution_ready_profile"
-        ]
+    user.decision_state = DecisionState(
+        focus=["Frontend Engineering"],
+        park=["Backend Engineering"],
+        drop=["Data Science / ML"],
+        reasons={
+            "Frontend Engineering": "Best alignment score (0.61)",
+            "Backend Engineering": "Good but bandwidth limited",
+            "Data Science / ML": "Low ROI"
+        }
     )
 
-    # -----------------------------------------
-    # RUN DECISION ENGINE
-    # -----------------------------------------
-    user = make_decision(user)
+    # -------------------------------
+    # RUN ADVISOR
+    # -------------------------------
+    advice = advise_decision(user)
 
-    # -----------------------------------------
-    # OUTPUT (HUMAN READABLE)
-    # -----------------------------------------
-    print("=== 🎯 FINAL DECISION ===\n")
+    print("🧠 DECISION ADVISOR OUTPUT\n")
+    for k, v in advice.items():
+        print(f"{k.upper()}:")
+        print(v)
+        print()
 
-    print("FOCUS:")
-    for f in user.decision_state.focus:
-        print(f"  ✔ {f}")
-
-    print("\nPARK:")
-    for p in user.decision_state.park:
-        print(f"  ⏸ {p}")
-
-    print("\nDROP:")
-    for d in user.decision_state.drop:
-        print(f"  ✖ {d}")
-
-    print("\n=== 🧠 REASONS ===")
-    for path, reason in user.decision_state.reasons.items():
-        print(f"- {path}: {reason}")
-
-    print("\n✅ Decision Demo Complete\n")
-
+    print("✅ Decision Advisor Demo Complete\n")
 
 if __name__ == "__main__":
     run_demo()

@@ -1,7 +1,14 @@
-# ai_engine/tests/orchestrator_demo.py
+"""
+Orchestrator Demo — FigureIt (FINAL)
 
-import json
+Validates:
+- Full pipeline
+- Market-aware decisions
+- Advisor + Roadmap + Explanation
+"""
+
 from ai_engine.orchestrator import Orchestrator
+import json
 
 
 def run_demo():
@@ -14,20 +21,21 @@ def run_demo():
         basic_data={
             "college_tier": 3,
             "year": 3,
-            "hours": 5,
+            "hours": 6,
             "constraints": []
         },
         interest_answers={
-            "q1": "I like building APIs and backend systems",
-            "q2": "I don't enjoy frontend much"
+            "q1": "I love building applications",
+            "q2": "I enjoy problem solving but not heavy math"
         },
-        github_username="torvalds",     # can be dummy
-        leetcode_username="neal_wu"     # can be dummy
+        github_username="torvalds",      # replace if needed
+        leetcode_username="neal_wu"      # replace if needed
     )
 
     print("🧠 ORCHESTRATOR OUTPUT:\n")
     print(json.dumps(result, indent=2))
-    print("\n✅ Orchestrator Demo Complete")
+    print("\n✅ Orchestrator Demo Complete\n")
+
 
 if __name__ == "__main__":
     run_demo()

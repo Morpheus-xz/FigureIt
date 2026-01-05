@@ -1,15 +1,16 @@
 """
-Orchestrator — FigureIt (v1.0 STABLE)
+Orchestrator — FigureIt (v1.1 FINAL STABLE)
 
 ROLE:
 - Central controller of the AI system
-- Runs agents in the correct order
-- Owns the lifecycle of UserState
-- Single entry point for API & chatbot
+- Runs agents in strict order
+- Owns UserState lifecycle
+- Single entry point for API / Chatbot
 """
 
 from typing import Dict, Any
 import logging
+from datetime import datetime
 
 # =========================
 # MODELS
@@ -17,14 +18,15 @@ import logging
 from ai_engine.models.user_state import UserState, BasicProfile
 
 # =========================
-# CORE AGENTS (Logic First)
+# CORE AGENTS
 # =========================
 from ai_engine.agents.context_profiler import build_context
 from ai_engine.agents.evidence_profiler import build_evidence
 from ai_engine.agents.decision_engine import make_decision
+from ai_engine.agents.decision_advisor import advise_decision
 
 # =========================
-# LLM AGENTS (Language Layer)
+# LLM AGENTS
 # =========================
 from ai_engine.agents.interest_chatbot import analyze_interests
 from ai_engine.agents.roadmap_generator import generate_roadmap
@@ -46,12 +48,11 @@ from ai_engine.data_pipeline.scrapers import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("FigureIt-Orchestrator")
 
-from datetime import datetime
 
+# -------------------------------------------------
+# JSON SAFETY
+# -------------------------------------------------
 def _json_safe(obj):
-    """
-    Recursively converts datetime objects to ISO strings.
-    """
     if isinstance(obj, dict):
         return {k: _json_safe(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -60,13 +61,17 @@ def _json_safe(obj):
         return obj.isoformat()
     return obj
 
+
+# =================================================
+# ORCHESTRATOR
+# =================================================
 class Orchestrator:
     """
     Central Nervous System of FigureIt.
     """
 
     # -------------------------------------------------
-    # MAIN PIPELINE
+    # FULL PIPELINE
     # -------------------------------------------------
     def run_full_analysis(
         self,
@@ -79,7 +84,7 @@ class Orchestrator:
 
         logger.info(f"🚀 Starting full analysis for {user_id}")
 
-        # 1️⃣ Create UserState
+        # 1️⃣ USER STATE
         user_state = UserState(
             user_id=user_id,
             basic_profile=BasicProfile(
@@ -90,27 +95,31 @@ class Orchestrator:
             )
         )
 
-        # 2️⃣ Context
+        # 2️⃣ CONTEXT
         user_state = build_context(user_state)
 
-        # 3️⃣ Evidence
+        # 3️⃣ EVIDENCE
         gh = get_github_stats(github_username)
         lc = get_leetcode_stats(leetcode_username)
         user_state = build_evidence(user_state, gh, lc)
 
-        # 4️⃣ Interests (LLM)
+        # 4️⃣ INTERESTS (LLM)
         user_state = analyze_interests(user_state, interest_answers)
 
-        # 5️⃣ Decision (Math)
+        # 5️⃣ DECISION ENGINE (Market-aware, internal)
         user_state = make_decision(user_state)
 
-        # 6️⃣ Roadmap (LLM)
+        # 6️⃣ DECISION ADVISOR (LLM reasoning)
+        decision_advice = advise_decision(user_state)
+
+        # 7️⃣ ROADMAP
         roadmap = generate_roadmap(user_state)
 
-        # 7️⃣ Explanation (LLM)
+        # 8️⃣ EXPLANATION
         explanation = explain_decision(user_state)
 
-        raw_output = {
+        # FINAL OUTPUT
+        output = {
             "status": "success",
             "user_id": user_id,
             "profile": {
@@ -119,22 +128,24 @@ class Orchestrator:
                     "strictness": user_state.context_profile.strictness_level.name,
                     "max_focus": user_state.context_profile.max_focus_skills
                 },
-                "evidence_flags": user_state.evidence_profile.flags,
-                "interest_bias": user_state.interest_profile.interest_bias
+                "interest_bias": user_state.interest_profile.interest_bias,
+                "evidence_flags": user_state.evidence_profile.flags
             },
             "decisions": {
                 "focus": user_state.decision_state.focus,
                 "park": user_state.decision_state.park,
-                "drop": user_state.decision_state.drop
+                "drop": user_state.decision_state.drop,
+                "reasons": user_state.decision_state.reasons
             },
+            "advisor": decision_advice,
             "roadmap": roadmap,
             "explanation": explanation
         }
 
-        return _json_safe(raw_output)
+        return _json_safe(output)
 
     # -------------------------------------------------
-    # INTERACTIVE MODES
+    # INTERACTIVE MODE
     # -------------------------------------------------
     def handle_interaction(
         self,

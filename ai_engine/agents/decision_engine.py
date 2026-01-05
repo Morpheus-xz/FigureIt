@@ -1,20 +1,9 @@
-"""
-Decision Engine — FigureIt (v5.0 FINAL)
-
-ROLE:
-- Convert numeric signals into FOCUS / PARK / DROP decisions
-- Fully data-driven (NO string rules, NO hard-coded flags)
-- ML-replaceable without refactor
-
-CORE IDEA:
-Each career path receives a viability score based on:
-- Evidence strength
-- Interest alignment
-- Context constraints (time & focus limits)
-"""
-
 from typing import Dict
+import os
+from openai import OpenAI
+
 from ai_engine.models.user_state import UserState, DecisionState
+from ai_engine.market.market_pulse import MarketPulse
 
 
 # =====================================================
@@ -28,7 +17,6 @@ CAREER_PATHS = [
     "Competitive Programming"
 ]
 
-# Difficulty multipliers (used ONLY as context penalty)
 PATH_DIFFICULTY = {
     "Frontend Engineering": 0.2,
     "Backend Engineering": 0.3,
@@ -36,132 +24,114 @@ PATH_DIFFICULTY = {
     "Competitive Programming": 0.4
 }
 
+PATH_TO_MARKET_SKILLS = {
+    "Frontend Engineering": ["React", "Next.js"],
+    "Backend Engineering": ["Python", "Java", "Node.js"],
+    "Data Science / ML": ["Python", "TensorFlow"],
+    "Competitive Programming": ["Algorithms"]
+}
+
 
 # =====================================================
-# FEATURE EXTRACTION (PURE NUMERIC)
+# FEATURE EXTRACTION
 # =====================================================
 
 def extract_features(user: UserState) -> Dict[str, float]:
-    """
-    Converts Evidence + Interests into a numeric feature vector (0–1).
-    """
     ev = user.evidence_profile
     gh = ev.github_stats
     lc = ev.leetcode_stats
     bias = user.interest_profile.interest_bias
 
-    features = {
-        # ---------- Project Signals ----------
+    return {
         "project_strength": min(gh.get("stars", 0) / 10, 1.0),
         "project_volume": min(gh.get("repos", 0) / 10, 1.0),
-
-        # ---------- DSA Signals ----------
         "dsa_depth": min(lc.get("medium", 0) / 40, 1.0),
-        "dsa_volume": min(lc.get("total_solved", 0) / 300, 1.0),
         "easy_bias": min(
-            (lc.get("easy", 0) / max(lc.get("total_solved", 1), 1)),
+            lc.get("easy", 0) / max(lc.get("total_solved", 1), 1),
             1.0
         ),
-
-        # ---------- Interest Signals ----------
         "interest_dev": bias.get("development", 0.0),
         "interest_ps": bias.get("problem_solving", 0.0),
         "interest_data": bias.get("data", 0.0),
     }
 
-    return features
-
 
 # =====================================================
-# SCORING LOGIC
+# BASE SCORE (NO MARKET)
 # =====================================================
 
-def score_path(
-    path: str,
-    f: Dict[str, float],
-    hours: int
-) -> float:
-    """
-    Computes final viability score for a career path.
-    """
-
+def score_path(path: str, f: Dict[str, float], hours: int) -> float:
     score = 0.0
 
     if path == "Frontend Engineering":
-        score += (
-            0.4 * f["project_strength"] +
-            0.2 * f["project_volume"] +
-            0.4 * f["interest_dev"]
-        )
+        score = 0.4*f["project_strength"] + 0.2*f["project_volume"] + 0.4*f["interest_dev"]
 
     elif path == "Backend Engineering":
-        score += (
-            0.3 * f["project_strength"] +
-            0.2 * f["dsa_depth"] +
-            0.3 * f["interest_dev"] +
-            0.2 * f["interest_ps"]
-        )
+        score = 0.3*f["project_strength"] + 0.2*f["dsa_depth"] + 0.3*f["interest_dev"] + 0.2*f["interest_ps"]
 
     elif path == "Data Science / ML":
-        score += (
-            0.4 * f["dsa_depth"] +
-            0.4 * f["interest_data"] -
-            0.2 * f["easy_bias"]
-        )
+        score = 0.4*f["dsa_depth"] + 0.4*f["interest_data"] - 0.2*f["easy_bias"]
 
     elif path == "Competitive Programming":
-        score += (
-            0.5 * f["dsa_depth"] +
-            0.3 * f["interest_ps"] -
-            0.2 * f["easy_bias"]
-        )
+        score = 0.5*f["dsa_depth"] + 0.3*f["interest_ps"] - 0.2*f["easy_bias"]
 
-    # ---------- Context Penalty ----------
     difficulty = PATH_DIFFICULTY[path]
     if hours < 10:
         score -= difficulty * 0.6
     elif hours < 15:
         score -= difficulty * 0.3
 
-    return round(max(score, 0.0), 3)
+    return max(score, 0.0)
 
 
 # =====================================================
-# MAIN ENTRY
+# FINAL DECISION ENGINE (FIXED)
 # =====================================================
 
 def make_decision(user: UserState) -> UserState:
     """
-    Produces FOCUS / PARK / DROP decisions.
+    Market-aware decision engine.
+    MarketPulse is owned internally.
     """
 
     features = extract_features(user)
     hours = user.basic_profile.time_availability
     max_focus = user.context_profile.max_focus_skills
 
-    scores = {
-        path: score_path(path, features, hours)
-        for path in CAREER_PATHS
-    }
+    market = MarketPulse(
+        client=OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    )
+
+    scores = {}
+    reasons = {}
+
+    for path in CAREER_PATHS:
+        base = score_path(path, features, hours)
+
+        skills = PATH_TO_MARKET_SKILLS.get(path, [])
+        market_multiplier = (
+            sum(market.get_market_multiplier(s) for s in skills) / len(skills)
+            if skills else 1.0
+        )
+
+        final = round(base * market_multiplier, 3)
+        scores[path] = final
+        reasons[path] = f"Score {final} (market {round(market_multiplier,2)}x)"
 
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
-    focus, park, drop, reasons = [], [], [], {}
+    focus, park, drop = [], [], []
 
     for path, score in ranked:
         if score < 0.25:
             drop.append(path)
-            reasons[path] = f"Low viability score ({score})."
         elif len(focus) < max_focus:
             focus.append(path)
-            reasons[path] = f"Best alignment score ({score})."
         else:
             park.append(path)
-            reasons[path] = f"Good option ({score}) but focus limit reached."
 
     if not focus:
         focus.append(ranked[0][0])
-        reasons[ranked[0][0]] = "Fallback choice due to weak overall signals."
 
     user.decision_state = DecisionState(
         focus=focus,
